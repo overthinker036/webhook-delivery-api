@@ -38,7 +38,6 @@ class WebhookResponse(BaseModel):
 
 
 #Delivery:
-
 class DeliveryStatus(str, Enum):
     QUEUED = "queued"
     DELIVERING = "delivering"

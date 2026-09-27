@@ -94,7 +94,7 @@ async def delete_a_webhook(id: int, db: AsyncSession = Depends(get_db_session)):
 
 
 #POST /events: Submit an event, return 202 + event_id
-@app.post("/events", status_code=202)
+@app.post("/events", status_code=status.HTTP_202_ACCEPTED)
 async def user_posted_an_event(db: AsyncSession = Depends(get_db_session)):
     pass
 
@@ -106,18 +106,36 @@ async def user_posted_an_event(db: AsyncSession = Depends(get_db_session)):
 #GET /events/{e_id}/deliveries: See every delivery attempt for an event
 @app.get("/events/{e_id}/deliveries")
 async def all_delivery_attemps_for_an_event(e_id: int, db: AsyncSession = Depends(get_db_session)):
-    pass
+    deliv_results = await db.execute(select(db_models.Delivery).where(db_models.Delivery.e_id == e_id))
+    deliveries = deliv_results.scalars().all()
+
+    if not deliveries:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No delivery for event {e_id} found!")
+
+    return deliveries
 
 
 
 
 
 #GET /deliveries: Filter/paginate delivery history
-@app.get("/deliveries")
-async def get_all_deliveries(db: AsyncSession = Depends(get_db_session)):
-    pass
+@app.get("/deliveries", response_model=list[models.Delivery])
+async def get_all_deliveries(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=50),
+    delivery_status: models.DeliveryStatus | None = Query(default=None),
+    db: AsyncSession = Depends(get_db_session)):
+    
+    query = select(db_models.Delivery)
 
+    if delivery_status is not None:
+        query = query.where(db_models.Delivery.status == delivery_status)
+        
+    query = query.order_by(db_models.Delivery.d_id).offset(skip).limit(limit)
+     
+    result = await db.execute(query)
 
+    return result.scalars().all() 
 
 
 
