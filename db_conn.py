@@ -9,6 +9,13 @@ async_engine = create_async_engine(DB_URL)
 AsyncSessionLocal = async_sessionmaker(bind=async_engine, autoflush=False, autocommit=False)
 
 
+async def get_db_session():
+    db = AsyncSessionLocal()
+    try:
+        yield db
+    finally:
+        await db.close()
+
 #Connection tester function:
 # async def check():
 #     async with async_engine.connect() as conn:

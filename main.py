@@ -5,6 +5,7 @@ import db_models
 import models
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from routes import (deliveries, events, subscriptions)
 
 
 
@@ -23,142 +24,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, title="Webhook Delivery API")
 
+app.include_router(subscriptions.router)
+app.include_router(events.router)
+app.include_router(deliveries.router)
 
-
-
-async def get_db_session():
-    db = AsyncSessionLocal()
-    try:
-        yield db
-    finally:
-        await db.close()
-
-
-
-
-
-#POST /subscriptions: Register a webhook URL
-@app.post("/subscriptions", status_code=status.HTTP_201_CREATED, response_model=models.WebhookResponse)
-async def register_a_webhook_url(data: models.WebhookCreate, db: AsyncSession = Depends(get_db_session)):
-
-    webhook = db_models.Webhook(address=data.address)
-
-    db.add(webhook)
-    await db.commit()
-    await db.refresh(webhook)
-    
-    return webhook
-
-
-
-
-
-#GET /subscriptions: List registered webhooks
-@app.get("/subscriptions", response_model=list[models.WebhookResponse])
-async def list_registered_webhooks(
-        skip: int = Query(default=0, ge=0), 
-        limit: int = Query(default=10, ge=1, le=50), 
-        db: AsyncSession = Depends(get_db_session)
-    ):
-
-    statement = (
-        select(db_models.Webhook)
-        .order_by(db_models.Webhook.w_id)
-        .offset(skip)
-        .limit(limit)
-        )
-
-    result = await db.scalars(statement)
-    return result.all()
-
-
-
-
-
-
-#DELETE /subscriptions/{id}: Remove one
-@app.delete("/subscriptions/{id}")
-async def delete_a_webhook(id: int, db: AsyncSession = Depends(get_db_session)):
-    webhook = await db.scalar(select(db_models.Webhook).where(db_models.Webhook.w_id == id))
-    
-    if webhook is None:
-        raise HTTPException(404, f"Subscription {id} not found")
-
-    await db.delete(webhook)
-    await db.commit()
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-
-
-
-#POST /events: Submit an event, return 202 + event_id
-@app.post("/events", status_code=status.HTTP_202_ACCEPTED)
-async def user_posted_an_event(db: AsyncSession = Depends(get_db_session)):
-    pass
-
-
-
-
-
-
-#GET /events/{e_id}/deliveries: See every delivery attempt for an event
-@app.get("/events/{e_id}/deliveries")
-async def all_delivery_attemps_for_an_event(e_id: int, db: AsyncSession = Depends(get_db_session)):
-    deliv_results = await db.execute(select(db_models.Delivery).where(db_models.Delivery.e_id == e_id))
-    deliveries = deliv_results.scalars().all()
-
-    if not deliveries:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No delivery for event {e_id} found!")
-
-    return deliveries
-
-
-
-
-
-#GET /deliveries: Filter/paginate delivery history
-@app.get("/deliveries", response_model=list[models.Delivery])
-async def get_all_deliveries(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=50),
-    delivery_status: models.DeliveryStatus | None = Query(default=None),
-    db: AsyncSession = Depends(get_db_session)):
-    
-    query = select(db_models.Delivery)
-
-    if delivery_status is not None:
-        query = query.where(db_models.Delivery.status == delivery_status)
-        
-    query = query.order_by(db_models.Delivery.d_id).offset(skip).limit(limit)
-     
-    result = await db.execute(query)
-
-    return result.scalars().all() 
-
-
-
-
-#POST /deliveries/{id}/retry: Manually retry a failed delivery
-@app.post("/deliveries/{d_id}/retry")
-async def retry_a_delivery(e_id: int, db: AsyncSession = Depends(get_db_session)):
-    pass
-
-
-
-
-
-
-
-
-# example event: {
-#     "type": "user.created",
-#     "payload": {
-#         "user_id": 17,
-#         "name": "John Doe"
-#     }
-# }
 
 
 
